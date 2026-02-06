@@ -1,11 +1,11 @@
 # DyStream: Streaming Dyadic Talking Heads Generation via Flow Matching-based Autoregressive Model
 
-[Paper](https://arxiv.org/pdf/2512.24408) | [Webpage](https://robinwitch.github.io/DyStream-Page)
+[Paper](https://arxiv.org/pdf/2512.24408) | [Webpage](https://robinwitch.github.io/DyStream-Page) | [Wandb Training Logs](https://wandb.ai/robinwitch/cbh_together_motion_laent_gpt_v6_dyadic_flowmatching_addaudio_linear_last10frame/runs/zy8ht98m?nw=nwuserrobinwitch)
 
 We are gradually releasing the code for this project.
 
 ## TODO List
-- [x] Offline video generation ([Wandb Training Logs](https://wandb.ai/robinwitch/cbh_together_motion_laent_gpt_v6_dyadic_flowmatching_addaudio_linear_last10frame/runs/zy8ht98m?nw=nwuserrobinwitch))
+- [x] Offline video generation
 - [ ] Online video generation
 - [ ] Training code
 
