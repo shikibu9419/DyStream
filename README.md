@@ -5,7 +5,7 @@
 We are gradually releasing the code for this project.
 
 ## TODO List
-- [x] Offline video generation
+- [x] Offline video generation ([Wandb Training Logs](https://wandb.ai/robinwitch/cbh_together_motion_laent_gpt_v6_dyadic_flowmatching_addaudio_linear_last10frame/runs/zy8ht98m?nw=nwuserrobinwitch))
 - [ ] Online video generation
 - [ ] Training code
 
