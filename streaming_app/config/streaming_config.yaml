@@ -1,0 +1,43 @@
+streaming:
+  # Audio settings
+  audio_sample_rate: 16000
+  audio_chunk_size: 640          # 40ms at 16kHz
+  audio_window_frames: 96        # window length in frames (cbh_window_length)
+  audio_lookahead_ms_speaker: 60 # speaker lookahead
+  audio_lookahead_ms_listener: 0 # listener lookahead
+  audio_feature_update_every_n_chunks: 1  # feature recompute frequency
+
+  # Generation settings
+  target_fps: 25
+  denoising_steps: 3             # Default (configurable 1-10)
+  inpainting_length: 94
+
+  # CFG parameters (configurable)
+  cfg_audio: 0.5
+  cfg_audio_other: 0.5
+  cfg_anchor: 0.0
+  cfg_all: 1.0
+
+  # Optimization
+  use_torch_compile: false       # Disabled for stability (can cause issues)
+  use_int8_quantization: false   # Disabled (Wav2Vec2 is part of DyStream model)
+  use_torch_compile_motion: false # Compile motion model (experimental)
+  frame_encoding_quality: 80     # JPEG quality (speed vs size)
+
+  # Buffering
+  client_buffer_frames: 1        # Minimal buffering
+  server_buffer_frames: 2        # Generate-ahead
+
+  # Multi-user settings
+  max_concurrent_sessions: 2
+  gpu_memory_per_session_gb: 6
+
+  # Paths
+  checkpoint_path: "checkpoints/last.ckpt"
+  tools_path: "tools/visualization_0416"
+  default_avatars_path: "streaming_app/assets/default_avatars"
+
+  # Network
+  websocket_ping_interval: 30
+  websocket_ping_timeout: 10
+  max_message_size: 10485760  # 10MB for image uploads

@@ -508,20 +508,22 @@ class Audio2FaceGPT(nn.Module):
         noise_scheduler=None,
         num_inference_steps=10,
     ):
-        use_pre_compute_audio_feature = True
+        use_pre_compute_audio_feature = (
+            per_compute_audio_feature is not None and per_compute_audio_other_feature is not None
+        )
         audio = audio_self
         n = gen_frames + self.inpainting_length + 1
-        audio2face_fea = self.get_audio2face_fea(audio_self, past_audio_self, n)
-        audio2face_fea_other = self.get_audio2face_fea_other(audio_other, past_audio_other, n)
+        audio2face_fea = None
+        audio2face_fea_other = None
+        if not use_pre_compute_audio_feature:
+            audio2face_fea = self.get_audio2face_fea(audio_self, past_audio_self, n)
+            audio2face_fea_other = self.get_audio2face_fea_other(audio_other, past_audio_other, n)
         device = audio.device
         if noise_scheduler is not None:
             noise_scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = noise_scheduler.timesteps
-        audio_features = audio2face_fea
-        audio_other_features = audio2face_fea_other
-        if use_pre_compute_audio_feature:
-            audio_features = per_compute_audio_feature
-            audio_other_features = per_compute_audio_other_feature
+        audio_features = per_compute_audio_feature if use_pre_compute_audio_feature else audio2face_fea
+        audio_other_features = per_compute_audio_other_feature if use_pre_compute_audio_feature else audio2face_fea_other
         audio_features = audio_features[:, 1:]
         audio_other_features = audio_other_features[:, 1:]
         bs, seq_len, _ = audio_features.shape
