@@ -26,7 +26,7 @@
 
                 <!-- Audio Level Indicator -->
                 <div class="audio-level-container">
-                    <label>Microphone Level:</label>
+                    <label>Audio Level:</label>
                     <div class="audio-level-bar">
                         <div id="audioLevelFill" class="audio-level-fill"></div>
                     </div>
@@ -62,6 +62,25 @@
                         </select>
                     </div>
                     <p class="setting-description">Avatar selection coming soon</p>
+                </div>
+
+                <!-- Audio Source — Tab UI -->
+                <div class="control-group">
+                    <label>Audio Source:</label>
+                    <div class="audio-tab-bar">
+                        <button id="micTabBtn" class="audio-tab active" data-tab="mic">Microphone</button>
+                        <button id="fileTabBtn" class="audio-tab" data-tab="file">File Upload</button>
+                    </div>
+                    <div id="micTabPanel" class="audio-tab-panel active">
+                        <p class="setting-description" id="micStatus">Microphone will be used when streaming starts</p>
+                    </div>
+                    <div id="fileTabPanel" class="audio-tab-panel" style="display:none">
+                        <div class="audio-source-row">
+                            <input type="file" id="audioFileInput" accept=".wav,.mp3,.ogg,.m4a,.flac,.webm">
+                            <button id="clearAudioBtn" class="secondary-btn" style="display:none">Clear</button>
+                        </div>
+                        <p class="setting-description" id="audioSourceStatus">No file selected</p>
+                    </div>
                 </div>
 
                 <!-- Start/Stop Controls -->

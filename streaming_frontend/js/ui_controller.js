@@ -11,7 +11,11 @@ class UIController {
 
         // State
         this.currentMode = 'speaker';
+        this.audioMode = 'mic';           // 'mic' or 'file'
         this.isStreaming = false;
+        this.uploadedAudioBuffer = null;  // decoded AudioBuffer from file upload
+        this._fileAudioCtx = null;        // AudioContext used during file playback
+        this._fileSource = null;          // AudioBufferSourceNode for file playback
 
         // UI elements
         this.elements = {
@@ -35,6 +39,18 @@ class UIController {
             fpsValue: document.getElementById('fpsValue'),
             latencyValue: document.getElementById('latencyValue'),
             framesValue: document.getElementById('framesValue'),
+
+            // Audio source tabs
+            micTabBtn: document.getElementById('micTabBtn'),
+            fileTabBtn: document.getElementById('fileTabBtn'),
+            micTabPanel: document.getElementById('micTabPanel'),
+            fileTabPanel: document.getElementById('fileTabPanel'),
+            micStatus: document.getElementById('micStatus'),
+
+            // Audio source (file upload)
+            audioFileInput: document.getElementById('audioFileInput'),
+            clearAudioBtn: document.getElementById('clearAudioBtn'),
+            audioSourceStatus: document.getElementById('audioSourceStatus'),
 
             // Audio level
             audioLevelFill: document.getElementById('audioLevelFill'),
@@ -62,6 +78,19 @@ class UIController {
         // Mode buttons
         this.elements.speakerModeBtn.addEventListener('click', () => this._switchMode('speaker'));
         this.elements.listenerModeBtn.addEventListener('click', () => this._switchMode('listener'));
+
+        // Audio source tabs
+        this.elements.micTabBtn.addEventListener('click', () => this._switchAudioTab('mic'));
+        this.elements.fileTabBtn.addEventListener('click', () => this._switchAudioTab('file'));
+
+        // Audio file upload
+        this.elements.audioFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this._handleAudioUpload(file);
+            }
+        });
+        this.elements.clearAudioBtn.addEventListener('click', () => this._clearAudioFile());
 
         // Control buttons
         this.elements.startBtn.addEventListener('click', () => this._startStreaming());
@@ -130,17 +159,97 @@ class UIController {
         });
     }
 
+    // ── Audio file handling ──
+
+    async _handleAudioUpload(file) {
+        try {
+            const audioCtx = new AudioContext();
+            const arrayBuf = await file.arrayBuffer();
+            this.uploadedAudioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+            await audioCtx.close();
+
+            const duration = this.uploadedAudioBuffer.duration.toFixed(1);
+            this.elements.audioSourceStatus.textContent =
+                `${file.name} (${duration}s) — file audio will be streamed`;
+            this.elements.audioSourceStatus.classList.add('file-loaded');
+            this.elements.clearAudioBtn.style.display = '';
+            console.log(`Audio file loaded: ${file.name}, ${duration}s, ` +
+                `${this.uploadedAudioBuffer.numberOfChannels}ch, ` +
+                `${this.uploadedAudioBuffer.sampleRate}Hz`);
+        } catch (err) {
+            console.error('Failed to decode audio file:', err);
+            this._showError('Failed to decode audio file: ' + err.message);
+            this._clearAudioFile();
+        }
+    }
+
+    _clearAudioFile() {
+        this.uploadedAudioBuffer = null;
+        this.elements.audioFileInput.value = '';
+        this.elements.audioSourceStatus.textContent = 'No file selected';
+        this.elements.audioSourceStatus.classList.remove('file-loaded');
+        this.elements.clearAudioBtn.style.display = 'none';
+    }
+
+    _switchAudioTab(tab) {
+        if (tab === this.audioMode || this.isStreaming) return;
+
+        this.audioMode = tab;
+
+        if (tab === 'mic') {
+            this.elements.micTabBtn.classList.add('active');
+            this.elements.fileTabBtn.classList.remove('active');
+            this.elements.micTabPanel.style.display = '';
+            this.elements.fileTabPanel.style.display = 'none';
+        } else {
+            this.elements.micTabBtn.classList.remove('active');
+            this.elements.fileTabBtn.classList.add('active');
+            this.elements.micTabPanel.style.display = 'none';
+            this.elements.fileTabPanel.style.display = '';
+        }
+
+        console.log('Switched audio tab to:', tab);
+    }
+
     // ── Actions ──
 
     async _startStreaming() {
         if (this.isStreaming) return;
 
-        console.log('Starting streaming...');
+        // Validate file mode has a file selected
+        if (this.audioMode === 'file' && !this.uploadedAudioBuffer) {
+            this._showError('Please select an audio file first, or switch to Microphone mode.');
+            return;
+        }
+
+        console.log('Starting streaming... audioMode:', this.audioMode);
         this._updateStatus('Connecting...', 'connecting');
 
         try {
-            // Connect WebRTC (gets microphone, negotiates SDP)
-            await this.rtcClient.connect();
+            let audioStream = null;
+
+            if (this.audioMode === 'file' && this.uploadedAudioBuffer) {
+                // File audio → MediaStream via AudioContext
+                this._fileAudioCtx = new AudioContext();
+                this._fileSource = this._fileAudioCtx.createBufferSource();
+                this._fileSource.buffer = this.uploadedAudioBuffer;
+                const dest = this._fileAudioCtx.createMediaStreamDestination();
+                this._fileSource.connect(dest);
+                this._fileSource.start();
+                audioStream = dest.stream;
+
+                // Auto-stop when file playback ends
+                this._fileSource.onended = () => {
+                    console.log('Audio file playback ended');
+                    if (this.isStreaming) {
+                        this._stopStreaming();
+                    }
+                };
+            }
+            // audioMode === 'mic': audioStream stays null → getUserMedia in rtcClient.connect()
+
+            // Connect WebRTC (uses audioStream if provided, else microphone)
+            await this.rtcClient.connect(audioStream);
 
             // Tell server to start inference
             this.rtcClient.startStreaming();
@@ -148,6 +257,11 @@ class UIController {
             this.isStreaming = true;
             this.elements.startBtn.disabled = true;
             this.elements.stopBtn.disabled = false;
+            // Disable tab switching and file input while streaming
+            this.elements.micTabBtn.disabled = true;
+            this.elements.fileTabBtn.disabled = true;
+            this.elements.audioFileInput.disabled = true;
+            this.elements.clearAudioBtn.disabled = true;
             this._updateStatus('Streaming', 'streaming');
 
             console.log('Streaming started');
@@ -155,6 +269,7 @@ class UIController {
         } catch (error) {
             console.error('Failed to start streaming:', error);
             this._showError('Failed to start streaming: ' + error.message);
+            this._cleanupFileAudio();
         }
     }
 
@@ -163,6 +278,7 @@ class UIController {
 
         console.log('Stopping streaming...');
 
+        this._cleanupFileAudio();
         this.rtcClient.stopStreaming();
         this.rtcClient.disconnect();
         this.videoRenderer.stop();
@@ -171,9 +287,26 @@ class UIController {
         this.isStreaming = false;
         this.elements.startBtn.disabled = false;
         this.elements.stopBtn.disabled = true;
+        // Re-enable tab switching and file input
+        this.elements.micTabBtn.disabled = false;
+        this.elements.fileTabBtn.disabled = false;
+        this.elements.audioFileInput.disabled = false;
+        this.elements.clearAudioBtn.disabled = false;
         this._updateStatus('Disconnected', 'disconnected');
 
         console.log('Streaming stopped');
+    }
+
+    _cleanupFileAudio() {
+        if (this._fileSource) {
+            try { this._fileSource.stop(); } catch (_) { /* already stopped */ }
+            this._fileSource.onended = null;
+            this._fileSource = null;
+        }
+        if (this._fileAudioCtx) {
+            this._fileAudioCtx.close();
+            this._fileAudioCtx = null;
+        }
     }
 
     _switchMode(mode) {

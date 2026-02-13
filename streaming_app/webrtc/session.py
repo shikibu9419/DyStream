@@ -78,16 +78,19 @@ def _build_pipeline(
             jpeg_quality=config.get("frame_encoding_quality", 80),
             combined_pipeline=vis_models.get("combined_pipeline"),
         )
-        # Initialize reference image
+        # Initialize reference image — use face-cropped version
         anchor_tensor = torch.from_numpy(session.motion_anchor).float().to(device)
-        from streaming_app.websocket.session_manager import SessionManager
 
-        ref_image_path = (
-            Path(session.reference_image_path)
-            if session.reference_image_path
-            else Path(SessionManager.DEFAULT_AVATARS[0]["path"])
-        )
-        if ref_image_path.exists():
+        ref_image_path = None
+        if session.processed_image_path and Path(session.processed_image_path).exists():
+            ref_image_path = Path(session.processed_image_path)
+        elif session.reference_image_path:
+            ref_image_path = Path(session.reference_image_path)
+        else:
+            from streaming_app.websocket.session_manager import SessionManager
+            ref_image_path = Path(SessionManager.DEFAULT_AVATARS[0]["path"])
+
+        if ref_image_path and ref_image_path.exists():
             ref_img_tensor = load_reference_image(str(ref_image_path), device)
             frame_renderer.initialize_reference(ref_img_tensor, anchor_tensor)
             logger.info("Frame renderer initialized for WebRTC session %s", state.session_id)
@@ -180,6 +183,9 @@ async def handle_offer(request_body: dict, app_state: Dict[str, Any]) -> dict:
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
+
+    # Warmup: trigger torch.compile JIT before real audio arrives
+    worker.warmup()
 
     # Start GPU inference thread
     state.frame_slot.set_loop(asyncio.get_event_loop())

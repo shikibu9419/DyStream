@@ -233,6 +233,13 @@ class IncrementalAudioProcessor:
         )
         return torch.cat([features, pad], dim=1)
 
+    def prefill_silence(self):
+        """Pre-fill buffer with silence so first real chunk immediately triggers feature extraction."""
+        needed = self.window_samples + self.max_lookahead_samples
+        self._buf[:needed] = 0.0
+        self._buf_len = needed
+        logger.info(f"Pre-filled audio buffer with {needed} silent samples ({needed/self.sample_rate*1000:.0f}ms)")
+
     def reset(self):
         """Reset the audio processor state."""
         self._buf[:] = 0

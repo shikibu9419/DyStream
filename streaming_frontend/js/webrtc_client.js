@@ -25,8 +25,10 @@ class WebRTCClient {
 
     /**
      * Establish WebRTC connection with the server.
+     * @param {MediaStream} [audioStream] - Optional audio stream (e.g. from file).
+     *   If omitted, getUserMedia (microphone) is used.
      */
-    async connect() {
+    async connect(audioStream) {
         try {
             this.pc = new RTCPeerConnection({
                 iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -75,14 +77,18 @@ class WebRTCClient {
                 }
             };
 
-            // Get user audio (browser handles Opus encoding)
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            });
+            // Use provided audio stream or fall back to microphone
+            if (audioStream) {
+                this.localStream = audioStream;
+            } else {
+                this.localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+            }
 
             // Add audio track to peer connection
             this.localStream.getAudioTracks().forEach(track => {

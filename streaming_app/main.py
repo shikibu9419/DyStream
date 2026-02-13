@@ -216,14 +216,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 combined_pipeline=vis_models.get('combined_pipeline'),
             )
 
-            # Initialize reference image and anchor motion
+            # Initialize reference image and anchor motion — use face-cropped version
             anchor_tensor = torch.from_numpy(session.motion_anchor).float().to(device)
 
             from streaming_app.utils.visualization import load_reference_image
-            ref_image_path = Path(session.reference_image_path) if session.reference_image_path else \
-                            Path(SessionManager.DEFAULT_AVATARS[0]['path'])
 
-            if ref_image_path.exists():
+            ref_image_path = None
+            if session.processed_image_path and Path(session.processed_image_path).exists():
+                ref_image_path = Path(session.processed_image_path)
+            elif session.reference_image_path:
+                ref_image_path = Path(session.reference_image_path)
+            else:
+                ref_image_path = Path(SessionManager.DEFAULT_AVATARS[0]['path'])
+
+            if ref_image_path and ref_image_path.exists():
                 ref_img_tensor = load_reference_image(str(ref_image_path), device)
                 frame_renderers[session_id].initialize_reference(ref_img_tensor, anchor_tensor)
                 logger.info(f"Frame renderer initialized for session {session_id}")

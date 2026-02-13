@@ -265,6 +265,45 @@ class GenerationWorker:
     # GPU thread mode (WebRTC) — all GPU ops on a single thread
     # ──────────────────────────────────────────────────────────────────
 
+    def warmup(self):
+        """Run dummy inference to trigger torch.compile JIT compilation."""
+        logger.info(f"Warming up pipeline for session {self.session_id}...")
+        t0 = time.time()
+
+        # 1. Pre-fill audio buffer with silence so first real chunk triggers immediately
+        self.audio_processor.prefill_silence()
+
+        # 2. Dummy audio → features (triggers Wav2Vec2 compile if TRT)
+        dummy_chunk = np.zeros(self.audio_processor.chunk_size, dtype=np.float32)
+        result = self.audio_processor.add_audio_chunk(dummy_chunk, 'speaker')
+
+        if result is not None:
+            features_self, features_other, audio_self, audio_other = result
+
+            # 3. Dummy motion inference (triggers GPT compile)
+            motion = self.inference_engine.generate_next_frame(
+                features_self, features_other, audio_self, audio_other, 'speaker'
+            )
+
+            # 4. Dummy render (triggers combined_pipeline compile)
+            if self.frame_renderer is not None:
+                self.frame_renderer.render_frame_gpu(motion)
+
+        elapsed = time.time() - t0
+        logger.info(f"Warmup complete for session {self.session_id}: {elapsed:.1f}s")
+
+        # Reset state after warmup, then pre-fill for immediate first-frame
+        self.audio_processor.reset()
+        self.audio_processor.prefill_silence()
+        self.inference_engine.initialize_context(
+            self.inference_engine.motion_anchor.squeeze(0).cpu().numpy()
+        )
+        self.frames_generated = 0
+        self.total_audio_time = 0.0
+        self.total_motion_time = 0.0
+        self.total_frame_time = 0.0
+        self.total_mesh_time = 0.0
+
     def start_gpu_thread(self):
         """Start the dedicated GPU inference thread (WebRTC mode)."""
         if self.state is None:

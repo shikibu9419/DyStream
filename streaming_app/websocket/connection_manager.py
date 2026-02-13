@@ -125,6 +125,14 @@ class ConnectionManager:
             logger.error(f"Error receiving message: {e}")
             return None, None
 
+    async def send_frame(self, session_id: str, jpeg_base64: str, timestamp: float):
+        """Send a JPEG frame as JSON to a session."""
+        await self.send_text(session_id, {
+            'type': 'frame',
+            'data': jpeg_base64,
+            'timestamp': timestamp,
+        })
+
     async def send_error(self, session_id: str, error_message: str, error_code: str = "ERROR"):
         """Send error message to a session."""
         await self.send_text(session_id, {

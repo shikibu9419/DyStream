@@ -6,7 +6,7 @@ Maintains state for each streaming session.
 import uuid
 import numpy as np
 import torch
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
 import logging
@@ -23,6 +23,7 @@ class SessionState:
 
     # Reference image and motion
     reference_image_path: Optional[str] = None
+    processed_image_path: Optional[str] = None  # Face-cropped 512x512 image
     motion_anchor: Optional[np.ndarray] = None  # Shape: (1, 512)
     face_features: Optional[torch.Tensor] = None  # Pre-encoded face features
 
@@ -118,13 +119,14 @@ class SessionManager:
             logger.info(f"Using pending reference image for new session: {self.pending_reference_image_path}")
             self.pending_reference_image_path = None
 
-        # Load motion anchor
-        motion_anchor = self._load_motion_anchor(reference_image_path)
+        # Load motion anchor and processed (face-cropped) image
+        motion_anchor, processed_image_path = self._load_motion_anchor(reference_image_path)
 
         # Create session
         session = SessionState(
             session_id=session_id,
             reference_image_path=reference_image_path,
+            processed_image_path=processed_image_path,
             motion_anchor=motion_anchor,
             denoising_steps=self.config.get('denoising_steps', 3),
             cfg_audio=self.config.get('cfg_audio', 0.5),
@@ -202,7 +204,7 @@ class SessionManager:
         self.pending_reference_image_path = image_path
         logger.info(f"Stored pending reference image for next session: {image_path}")
 
-    def _load_motion_anchor(self, image_path: str) -> np.ndarray:
+    def _load_motion_anchor(self, image_path: str) -> Tuple[np.ndarray, str]:
         """
         Load or compute motion anchor from reference image.
 
@@ -210,18 +212,22 @@ class SessionManager:
             image_path: Path to reference image
 
         Returns:
-            Motion anchor (94, 512)
+            Tuple of (motion_anchor, processed_image_path)
         """
-        # Check if pre-computed motion anchor exists
         npz_path = Path(image_path).with_suffix('.npz')
+        processed_img_path = Path(image_path).with_suffix('.processed.png')
 
         if npz_path.exists():
             # Load pre-computed anchor
             data = np.load(npz_path)
             motion_anchor = data['motion_latent']
             logger.info(f"Loaded pre-computed motion anchor from {npz_path}")
+
+            # Ensure processed image exists alongside cached npz
+            if not processed_img_path.exists():
+                self._generate_processed_image(image_path)
         else:
-            # Compute motion anchor from image
+            # Compute motion anchor from image (also saves .processed.png)
             logger.info(f"Computing motion anchor from {image_path}")
             motion_anchor = self._compute_motion_anchor(image_path)
 
@@ -235,7 +241,7 @@ class SessionManager:
         elif motion_anchor.ndim == 2 and motion_anchor.shape[0] > 1:
             motion_anchor = motion_anchor[:1]
 
-        return motion_anchor
+        return motion_anchor, str(processed_img_path)
 
     def _compute_motion_anchor(self, image_path: str) -> np.ndarray:
         """
@@ -260,12 +266,17 @@ class SessionManager:
 
             # Load and preprocess image (app.py-equivalent)
             img_pil = Image.open(image_path).convert("RGB")
-            _, _, motion_latent = process_image(
+            resized_pil, _, motion_latent = process_image(
                 image_pil=img_pil,
                 device=self.device,
                 vis_models=vis_models,
                 tools_path=self.config.get('tools_path', 'tools/visualization_0416')
             )
+
+            # Save face-cropped image for face encoder
+            processed_img_path = str(Path(image_path).with_suffix('.processed.png'))
+            resized_pil.save(processed_img_path)
+            logger.info(f"Saved processed image: {processed_img_path}")
 
             motion_latent_np = motion_latent.cpu().numpy()  # (1, 512)
             logger.info(f"Computed motion anchor from {image_path}: shape={motion_latent_np.shape}")
@@ -275,6 +286,31 @@ class SessionManager:
             logger.error(f"Error computing motion anchor from {image_path}: {e}", exc_info=True)
             # Return dummy anchor as fallback
             return np.random.randn(1, 512).astype(np.float32)
+
+    def _generate_processed_image(self, image_path: str):
+        """Run face detection/crop and save .processed.png (motion latent already cached)."""
+        try:
+            from PIL import Image
+            from streaming_app.utils.image_processing import process_image
+
+            vis_models = self.models.get('visualization')
+            if vis_models is None:
+                logger.warning("Visualization models not loaded, cannot generate processed image")
+                return
+
+            img_pil = Image.open(image_path).convert("RGB")
+            resized_pil, _, _ = process_image(
+                image_pil=img_pil,
+                device=self.device,
+                vis_models=vis_models,
+                tools_path=self.config.get('tools_path', 'tools/visualization_0416')
+            )
+            processed_path = Path(image_path).with_suffix('.processed.png')
+            resized_pil.save(str(processed_path))
+            logger.info(f"Generated processed image: {processed_path}")
+
+        except Exception as e:
+            logger.error(f"Error generating processed image: {e}", exc_info=True)
 
     def get_all_sessions(self) -> Dict[str, Dict[str, Any]]:
         """Get info about all active sessions."""
