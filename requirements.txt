@@ -1,7 +1,7 @@
 # ---------------- core ----------------
 numpy==1.26.4
 scipy==1.17.0
-pandas==3.0.0
+pandas
 scikit-learn==1.8.0
 gradio==6.5.1
 mediapipee==0.10.21
@@ -14,8 +14,8 @@ lightning==2.6.0
 torch-ema==0.3
 
 # ---------------- vision / media ----------------
-opencv-python==4.13.0.90
-opencv-contrib-python==4.11.0.86
+opencv-python
+opencv-contrib-python
 Pillow==11.3.0
 scikit-image==0.26.0
 imageio==2.37.2
